@@ -7,9 +7,7 @@ from groq import Groq
 from app.config import settings
 from app.query_rewriter import LegalQueryRewriter
 from app.classifier import LegalQueryClassifier
-from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone
-from flashrank import Ranker, RerankRequest
 from typing import List, Dict, Any
 
 
@@ -19,18 +17,32 @@ class LegalRetriever:
         self.client     = Groq(api_key=settings.GROQ_API_KEY)
         self.model_name = settings.LLM_MODEL
 
-        print("Loading embedding model...")
-        self.embed_model = SentenceTransformer(settings.EMBEDDING_MODEL)
+        # Models will be lazy-loaded to prevent Render timeout
+        self._embed_model = None
+        self._ranker = None
 
         pc         = Pinecone(api_key=settings.PINECONE_API_KEY)
         self.index = pc.Index(settings.INDEX_NAME)
 
-        print("Loading re-ranker...")
-        self.ranker = Ranker()
-
         self.rewriter   = LegalQueryRewriter()
         self.classifier = LegalQueryClassifier()
-        print("✅ LegalRetriever ready.")
+        print("✅ LegalRetriever initialized (Models deferred).")
+
+    @property
+    def embed_model(self):
+        if self._embed_model is None:
+            print("📦 Loading embedding model (Lazy)...")
+            from sentence_transformers import SentenceTransformer
+            self._embed_model = SentenceTransformer(settings.EMBEDDING_MODEL)
+        return self._embed_model
+
+    @property
+    def ranker(self):
+        if self._ranker is None:
+            print("📦 Loading re-ranker (Lazy)...")
+            from flashrank import Ranker
+            self._ranker = Ranker()
+        return self._ranker
 
     def condense_query(self, query: str, history: List[Any] = None) -> str:
         if not history or len(history) == 0:
@@ -111,6 +123,7 @@ class LegalRetriever:
             )
             matches = raw_results.get("matches", [])
 
+        from flashrank import RerankRequest
         reranked = self.rerank(raw_query, matches)
         final    = self._deduplicate(reranked)[:8]
 
