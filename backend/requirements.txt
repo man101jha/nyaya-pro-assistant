@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+pinecone-client
+groq
+sentence-transformers
+numpy
+gunicorn
