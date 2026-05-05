@@ -34,8 +34,8 @@ class Settings:
     JSON_DATA_DIR: str = "data"
 
     # Embedding Model
-    EMBEDDING_MODEL: str = "all-mpnet-base-v2"
-    EMBEDDING_DIM: int = 768
+    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+    EMBEDDING_DIM: int = 384
 
     # LLM
     LLM_MODEL: str = "llama-3.3-70b-versatile"
