@@ -2,8 +2,9 @@ fastapi
 uvicorn
 pydantic
 python-dotenv
-pinecone-client
+pinecone
 groq
 sentence-transformers
 numpy
 gunicorn
+flashrank
