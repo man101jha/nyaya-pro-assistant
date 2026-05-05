@@ -7,4 +7,3 @@ groq
 sentence-transformers
 numpy
 gunicorn
-flashrank

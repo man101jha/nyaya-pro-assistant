@@ -17,16 +17,15 @@ class LegalRetriever:
         self.client     = Groq(api_key=settings.GROQ_API_KEY)
         self.model_name = settings.LLM_MODEL
 
-        # Models will be lazy-loaded to prevent Render timeout
+        # Only embedding model is lazy-loaded (saves memory)
         self._embed_model = None
-        self._ranker = None
 
         pc         = Pinecone(api_key=settings.PINECONE_API_KEY)
         self.index = pc.Index(settings.INDEX_NAME)
 
         self.rewriter   = LegalQueryRewriter()
         self.classifier = LegalQueryClassifier()
-        print("✅ LegalRetriever initialized (Models deferred).")
+        print("✅ LegalRetriever initialized (Free-Tier Optimized).")
 
     @property
     def embed_model(self):
@@ -35,14 +34,6 @@ class LegalRetriever:
             from sentence_transformers import SentenceTransformer
             self._embed_model = SentenceTransformer(settings.EMBEDDING_MODEL)
         return self._embed_model
-
-    @property
-    def ranker(self):
-        if self._ranker is None:
-            print("📦 Loading re-ranker (Lazy)...")
-            from flashrank import Ranker
-            self._ranker = Ranker()
-        return self._ranker
 
     def condense_query(self, query: str, history: List[Any] = None) -> str:
         if not history or len(history) == 0:
@@ -67,32 +58,31 @@ class LegalRetriever:
             print(f"⚠️  condense_query failed ({e}), using original.")
             return query
 
-    def rerank(self, original_query: str, matches: List[Dict]) -> List[Dict]:
-        if not matches:
-            return []
-        passages = [
-            {"id": m["id"], "text": m["metadata"].get("text", ""), "metadata": m["metadata"]}
-            for m in matches
-            if m["metadata"].get("text", "").strip()
-        ]
-        if not passages:
-            return []
-        results = self.ranker.rerank(RerankRequest(query=original_query, passages=passages))
-        # Remove strict threshold to avoid dropping valid results for command-like queries.
-        # Just return the re-ranked list, sorted by score.
-        return results
-
-    def _deduplicate(self, results: List[Dict]) -> List[Dict]:
+    def _deduplicate(self, matches: List[Any]) -> List[Dict]:
         seen, unique = set(), []
-        for r in results:
-            snippet = r.get("metadata", {}).get("text", "")[:80].strip()
+        for m in matches:
+            # Handle both dictionary and object formats from Pinecone
+            if isinstance(m, dict):
+                meta = m.get("metadata", {})
+                score = m.get("score", 0)
+                mid = m.get("id", "")
+            else:
+                meta = getattr(m, "metadata", {})
+                score = getattr(m, "score", 0)
+                mid = getattr(m, "id", "")
+
+            snippet = meta.get("text", "")[:80].strip()
             if snippet and snippet not in seen:
                 seen.add(snippet)
-                r["score"] = float(r.get("score", 0))
-                unique.append(r)
+                # Ensure we return a PLAIN DICTIONARY to prevent FastAPI RecursionError
+                unique.append({
+                    "id": mid,
+                    "score": float(score) if score else 0.0,
+                    "metadata": dict(meta)
+                })
         return unique
 
-    def retrieve(self, raw_query: str, history: List[Any] = None, top_k: int = 50) -> List[Dict]:
+    def retrieve(self, raw_query: str, history: List[Any] = None, top_k: int = 15) -> List[Dict]:
         print(f"\n{'─'*50}\n📥 Query: {raw_query}")
 
         condensed    = self.condense_query(raw_query, history)
@@ -123,9 +113,8 @@ class LegalRetriever:
             )
             matches = raw_results.get("matches", [])
 
-        from flashrank import RerankRequest
-        reranked = self.rerank(raw_query, matches)
-        final    = self._deduplicate(reranked)[:8]
+        # Return deduplicated top results directly
+        final = self._deduplicate(matches)[:8]
 
         print(f"✅ Returning {len(final)} results\n{'─'*50}\n")
         return final

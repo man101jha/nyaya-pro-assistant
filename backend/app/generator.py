@@ -139,3 +139,47 @@ Citation rules (MANDATORY):
 
         except Exception as e:
             return f"Error generating answer: {str(e)}"
+    def generate_answer_stream(
+        self,
+        query: str,
+        sources: List[Dict],
+        history: List[Any] = None
+    ):
+        """
+        Generates a streaming legal answer.
+        Yields chunks of text as they are received from Groq.
+        """
+        if not sources:
+            context, source_codes = "", []
+        else:
+            context, source_codes = self._build_context(sources)
+            
+        system_prompt = self._build_system_prompt(source_codes)
+        messages = [{"role": "system", "content": system_prompt}]
+
+        if history:
+            for msg in history[-4:]:
+                messages.append({"role": msg.role, "content": msg.content})
+
+        messages.append({
+            "role": "user",
+            "content": f"Legal Sections:\n{context}\n\nQuestion: {query}"
+        })
+
+        try:
+            import time
+            stream = self.client.chat.completions.create(
+                messages=messages,
+                model=self.model_name,
+                temperature=0.1,
+                max_tokens=1500,
+                stream=True, # Enable streaming
+            )
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    token = chunk.choices[0].delta.content
+                    yield token
+                    time.sleep(0.015) # Small natural delay for visible typing effect
+
+        except Exception as e:
+            yield f"Error generating answer: {str(e)}"
