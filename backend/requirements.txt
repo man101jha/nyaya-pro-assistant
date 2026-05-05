@@ -1,9 +1,11 @@
+# Use CPU-only torch to save space and memory on Render
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 fastapi
 uvicorn
 pydantic
-python-dotenv
 pinecone
-groq
 sentence-transformers
-numpy
-gunicorn
+groq
+python-dotenv
+firebase-admin
