@@ -3,12 +3,12 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCEcSxYvXKrDurQQNYCQft-4D4nSgHZUqc",
-  authDomain: "nyaya-pro.firebaseapp.com",
-  projectId: "nyaya-pro",
-  storageBucket: "nyaya-pro.firebasestorage.app",
-  messagingSenderId: "35440746990",
-  appId: "1:35440746990:web:7fefb3bc1a8c7d293f6eff"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
 // Prevent multiple initializations in Next.js development environment
