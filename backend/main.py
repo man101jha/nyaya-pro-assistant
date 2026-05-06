@@ -26,6 +26,12 @@ class ChatRequest(BaseModel):
     message: str
     history: Optional[List[ChatMessage]] = []
 
+
+
+class VisionRequest(BaseModel):
+    image_base64: str
+    message: str
+
 retriever = LegalRetriever()
 generator = LegalGenerator()
 
@@ -45,6 +51,49 @@ async def warmup():
     except Exception as e:
         print(f"Warmup Error: {e}")
         return {"status": "error", "message": str(e)}
+
+@app.post("/chat/vision")
+async def chat_vision(request: VisionRequest):
+    """
+    Analyzes an image (Base64) using Llama-3.2-11b-vision.
+    """
+    try:
+        # Use the Groq client from the generator for consistency
+        client = generator.client 
+        
+        response = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text", 
+                            "text": (
+                                "You are Nyaya-Pro AI, a specialized Indian legal expert. "
+                                "Your task is to analyze this image ONLY if it is a legal document, a court notice, a contract, "
+                                "or evidence related to a legal matter. \n\n"
+                                "STRICT RULE: If the image is unrelated to law (e.g., a random personal photo, nature, a meme, etc.), "
+                                "do NOT describe it. Instead, reply: 'I am a specialized legal assistant. I can only analyze legal documents, notices, or evidence.'\n\n"
+                                f"User Question: {request.message}"
+                            )
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{request.image_base64}",
+                            },
+                        },
+                    ],
+                }
+            ],
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            temperature=0.1,
+            max_tokens=1024,
+        )
+        return {"answer": response.choices[0].message.content}
+    except Exception as e:
+        print(f"Vision Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
@@ -81,6 +130,8 @@ async def chat_stream(request: ChatRequest):
     except Exception as e:
         print(f"Stream Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
 
 if __name__ == "__main__":
     import uvicorn

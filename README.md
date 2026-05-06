@@ -1,89 +1,66 @@
-# Nyaya-Pro: Agentic Legal RAG Assistant ⚖️🤖
+# ⚖️ Nyaya-Pro: Agentic Legal RAG Assistant (v2.0)
 
-Nyaya-Pro is a high-performance, production-grade legal research assistant designed to navigate the complexities of the Indian Legal System. It leverages **Agentic Retrieval-Augmented Generation (RAG)** to provide precise, cited, and hallucination-free answers from multiple legal sources.
+Nyaya-Pro is a production-grade, multimodal AI assistant designed to navigate the complexities of the Indian Legal System. Optimized for high-performance retrieval and low-memory environments, it provides instant, cited answers from the Constitution of India, Bharatiya Nyaya Sanhita (BNS), and more.
 
----
+![Nyaya-Pro Dashboard](https://raw.githubusercontent.com/man101jha/nyaya-pro/main/preview.png)
 
-## 🚀 Overview
-Nyaya-Pro transforms how legal professionals and citizens interact with the law. Instead of searching through thousands of pages of PDF documents, users can query a unified AI interface that understands context, identifies the relevant legal act, and retrieves the exact provision needed.
+## 🌟 Key Features
 
-### Key Features
-- **Multi-Source Intelligence**: Seamlessly queries the Constitution of India, BNS (Bharatiya Nyaya Sanhita), BNSS, and CPC.
-- **Agentic Routing**: Uses a `LegalQueryClassifier` to determine the intent of a query and route it to the correct legal namespace.
-- **Verified Citations**: Every answer includes "Verified Source" chips that link directly to the relevant Article or Section.
-- **Premium UI/UX**: A modern, glassmorphic dark-mode interface built with Next.js, Tailwind CSS, and Framer Motion.
-- **Cloud Persistence**: Real-time chat history synchronization across devices using Firebase Firestore.
+### 🎙️ Multimodal Intelligence
+- **Voice Mode**: Real-time dictation with **Hinglish (Hindi + English)** support using the Web Speech API.
+- **Vision Mode**: Analyze legal notices, contracts, and evidence photos directly via **Llama-4-Scout** multimodal processing.
+- **Contextual Awareness**: Intelligent follow-up handling that distinguishes between new topics and deep-dives.
 
----
+### 🔍 Advanced RAG Pipeline
+- **Exact-Match Boosting**: Specialized regex-driven retrieval that prioritizes exact Article and Section numbers (e.g., "Art 75", "Sec 101").
+- **Smart Query Rewriting**: Casual queries are transformed into formal legal terminology for higher Pinecone accuracy.
+- **Legal Guardrails**: Vision analysis is strictly filtered to legal documents and evidence only.
 
-## 🛠️ Technology Stack
+### ⚡ Production Performance
+- **Memory Optimized**: Runs on **512MB RAM** (Render Free Tier) using `all-MiniLM-L6-v2` (384-dim) embeddings.
+- **CPU-Only Deployment**: Forced CPU-only PyTorch installation to reduce build size by over 2GB.
+- **Lazy Initialization**: Smart warmup sequence that lazy-loads models only when the user enters the chat.
+- **High-Fidelity Streaming**: Custom `TextDecoder` pipeline with a human-like typewriter effect.
 
-### Frontend
-- **Framework**: [Next.js 15+](https://nextjs.org/) (App Router)
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/) with Glassmorphic design principles.
-- **Animations**: [Framer Motion](https://www.framer.com/motion/) for smooth transitions and interactive elements.
-- **Icons**: [Lucide React](https://lucide.dev/).
-- **Auth & DB**: [Firebase](https://firebase.google.com/) (Authentication & Firestore).
+## 🛠️ Tech Stack
 
-### Backend
-- **Framework**: [FastAPI](https://fastapi.tiangolo.com/) (Asynchronous Python).
-- **LLM Engine**: [Groq](https://groq.com/) (Llama 3 / Mixtral) for ultra-fast inference.
-- **Vector Database**: [Pinecone](https://www.pinecone.io/) for high-scale similarity search.
-- **Embeddings**: `BAAI/bge-small-en-v1.5` (Local inference for privacy and speed).
+- **Frontend**: Next.js 14, Tailwind CSS, Framer Motion, Lucide Icons.
+- **Backend**: FastAPI (Python), Groq (Llama 3/4), Pinecone Vector DB.
+- **Database**: Firebase Auth & Firestore for session management.
+- **Models**: 
+  - Text: `llama-3.3-70b-versatile`
+  - Vision: `meta-llama/llama-4-scout-17b-16e-instruct`
+  - Embeddings: `all-MiniLM-L6-v2` (CPU-Optimized)
 
----
+## 🚀 Quick Start
 
-## 🧠 Core Concepts: RAG & Vector DB
+### 1. Backend Setup
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
 
-### What is RAG?
-**Retrieval-Augmented Generation (RAG)** is an architecture used to optimize the output of a Large Language Model (LLM) by referencing an external, authoritative knowledge base before generating a response. 
+### 2. Frontend Setup
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-**In Nyaya-Pro, RAG works as follows:**
-1. **Retrieve**: When you ask a question, the system searches the legal database for the most relevant sections.
-2. **Augment**: These sections are injected into the LLM's prompt as "ground truth" context.
-3. **Generate**: The LLM synthesizes an answer based *only* on the provided context, ensuring legal accuracy and preventing hallucinations.
+### 3. Environment Variables
+Create a `.env` file in the backend:
+```env
+GROQ_API_KEY=your_key
+PINECONE_API_KEY=your_key
+INDEX_NAME=nyaya-pro
+NAMESPACE=legal-data
+```
 
-### Why use a Vector Database (Pinecone)?
-Traditional databases search for exact keywords. Legal language is nuanced; a user might ask about "punishment for theft" while the law mentions "penalties for larceny."
-
-**Vector Databases** solve this by:
-- **Semantic Search**: Converting text into high-dimensional vectors (mathematical representations of meaning).
-- **Namespace Isolation**: We use Pinecone namespaces (e.g., `bns`, `constitution`) to isolate different legal acts, allowing our Agentic Router to target specific laws with 100% precision.
-
----
-
-## 🔧 Architecture & Optimization
-- **Sliding Window Context**: The backend maintains a memory of the last 4 messages to ensure conversational continuity without overwhelming the LLM with token noise.
-- **Query Classification**: Every query is first analyzed by a `LegalQueryClassifier`. If the user simply says "Hello," the system bypasses the expensive Vector Search entirely, responding instantly with zero latency.
-- **Cross-Encoder Verification**: The system uses a cross-encoder to re-rank search results, ensuring that only the most mathematically relevant legal provisions are used to form the answer.
-
----
-
-## 🚀 Deployment (Monorepo)
-
-This project is designed to be deployed as a monorepo.
-
-### Backend (Render)
-1. **Root Directory**: `backend`
-2. **Build Command**: `pip install -r requirements.txt`
-3. **Start Command**: `gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app`
-4. **Env Vars**: `GROQ_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`.
-
-### Frontend (Vercel)
-1. **Root Directory**: `frontend`
-2. **Framework**: Next.js
-3. **Env Vars**: `NEXT_PUBLIC_API_URL` (Points to Render URL), Firebase Config keys.
+## ⚖️ Legal Disclaimer
+Nyaya-Pro AI provides information based on processed legal documents. It is an assistant, not a replacement for professional legal counsel. Always verify important constitutional references.
 
 ---
-
-## 👨‍💻 Developer
-**Mangesh Jha**  
-Full Stack Developer & AI Architect  
-- [GitHub](https://github.com/man101jha)
-- [LinkedIn](https://www.linkedin.com/in/mangesh-jha/)
-- [Portfolio](https://mangesh-jha.vercel.app/)
-
----
-
-## 📜 License
-This project is for educational and professional legal research assistance purposes. Always verify AI-generated legal advice with a certified legal professional.
+Built with ❤️ for the Indian Legal Community by [Mangesh Jha](https://github.com/man101jha)

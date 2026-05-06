@@ -231,6 +231,81 @@ export default function ChatPage() {
     }
   };
 
+  const handleVisionSend = async (message: string, base64: string) => {
+    if (!activeSessionId || !user) return;
+
+    // 1. Add User Message (Text + Image indicator)
+    const userMsg: Message = { role: "user", content: `📸 [Image Attached] ${message}` };
+    
+    setSessions(prev => prev.map(s => s.id === activeSessionId ? {
+      ...s,
+      messages: [...s.messages, userMsg],
+      lastUpdated: Date.now()
+    } : s));
+    
+    setIsLoading(true);
+
+    try {
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const response = await fetch(`${apiBaseUrl}/chat/vision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, image_base64: base64 }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Vision Error");
+
+      // --- SIMULATED TYPING EFFECT ---
+      const fullAnswer = data.answer;
+      let displayedAnswer = "";
+      
+      const aiMsg: Message = {
+        role: "assistant",
+        content: "",
+        sources: [],
+      };
+
+      // Add empty message first
+      setSessions(prev => prev.map(s => s.id === activeSessionId ? {
+        ...s,
+        messages: [...s.messages, aiMsg]
+      } : s));
+
+      // Type it out word by word for a "Human-like" feel
+      const words = fullAnswer.split(" ");
+      for (let i = 0; i < words.length; i++) {
+        displayedAnswer += (i === 0 ? "" : " ") + words[i];
+        
+        // Update the last message in the session
+        setSessions(prev => prev.map(s => s.id === activeSessionId ? {
+          ...s,
+          messages: s.messages.map((m, idx) => 
+            idx === s.messages.length - 1 ? { ...m, content: displayedAnswer } : m
+          )
+        } : s));
+
+        // Random delay to make it look natural (10ms to 40ms)
+        await new Promise(resolve => setTimeout(resolve, 20 + Math.random() * 30));
+      }
+
+      // Final save to DB
+      await setDoc(doc(db, "users", user.uid, "sessions", activeSessionId), {
+        messages: [...messages, userMsg, { ...aiMsg, content: fullAnswer }],
+        lastUpdated: Date.now()
+      }, { merge: true });
+
+    } catch (error) {
+      console.error("Vision Error:", error);
+      setSessions(prev => prev.map(s => s.id === activeSessionId ? {
+        ...s,
+        messages: [...s.messages, { role: "assistant", content: "Vision Analysis failed. Check backend logs." }]
+      } : s));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (authLoading || !user) {
     return (
       <div className="h-screen w-full bg-[#090A0F] flex items-center justify-center">
@@ -309,7 +384,11 @@ export default function ChatPage() {
               onSend={handleSendMessage}
             />
         <div className="bg-gradient-to-t from-[#090A0F] via-[#090A0F]/80 to-transparent pt-6 pb-2">
-          <ChatInput onSend={handleSendMessage} disabled={isLoading} />
+          <ChatInput 
+            onSend={handleSendMessage} 
+            onVisionSend={handleVisionSend}
+            disabled={isLoading} 
+          />
         </div>
       </div>
     </ChatLayout>
