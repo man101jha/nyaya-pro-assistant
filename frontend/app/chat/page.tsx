@@ -21,9 +21,28 @@ export default function ChatPage() {
   const router = useRouter();
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const LOADING_MESSAGES = [
+    "Initializing legal workspace...",
+    "Consulting the Constitution...",
+    "Scanning Bharatiya Nyaya Sanhita (BNS)...",
+    "Loading procedural codes...",
+    "Nyaya-Pro is preparing your answer...",
+    "Verifying legal references..."
+  ];
+
+  const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true); // New state for pre-loading
+
+  // Rotate loading messages
+  useEffect(() => {
+    if (!isInitializing) return;
+    const interval = setInterval(() => {
+      setLoadingMsgIdx((prev) => (prev + 1) % LOADING_MESSAGES.length);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [isInitializing]);
 
   // Pre-load AI models on mount
   useEffect(() => {
@@ -139,7 +158,6 @@ export default function ChatPage() {
       if (!response.body) throw new Error("No response body");
 
       // Initialize AI Message in state
-      const aiMsgId = Date.now().toString();
       const initialAiMsg: Message = {
         role: "assistant",
         content: "",
@@ -158,36 +176,32 @@ export default function ChatPage() {
       const decoder = new TextDecoder();
       let fullContent = "";
       let sources: any[] = [];
-      let metadataFound = false;
+      let isFirstChunk = true;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
+        let chunk = decoder.decode(value, { stream: true });
         
-        // Split chunk into lines to handle metadata vs tokens
-        const lines = chunk.split("\n");
-        let processedChunk = "";
-
-        for (const line of lines) {
-            if (line.startsWith("__METADATA__:")) {
+        // The very first line contains our metadata
+        if (isFirstChunk && chunk.includes("__METADATA__:")) {
+            const lines = chunk.split("\n");
+            const metaLine = lines.find(l => l.startsWith("__METADATA__:"));
+            if (metaLine) {
                 try {
-                    const metadata = JSON.parse(line.replace("__METADATA__:", ""));
+                    const metadata = JSON.parse(metaLine.replace("__METADATA__:", ""));
                     sources = metadata.sources;
-                    metadataFound = true;
                 } catch (e) {
                     console.error("Metadata parse error", e);
                 }
-            } else if (line) {
-                // If it's not metadata, it's a token
-                processedChunk += line + (lines.length > 1 ? "" : ""); // Keep tokens clean
+                // Keep everything else in the chunk as content (preserving newlines)
+                chunk = lines.filter(l => !l.startsWith("__METADATA__:")).join("\n");
             }
+            isFirstChunk = false;
         }
 
-        if (!chunk.startsWith("__METADATA__:")) {
-            fullContent += chunk;
-        }
+        fullContent += chunk;
 
         // Update UI state with new content
         setSessions(prev => prev.map(s => s.id === activeSessionId ? {
@@ -208,14 +222,9 @@ export default function ChatPage() {
 
     } catch (error) {
       console.error("Error:", error);
-      const errorMsg: Message = {
-        role: "assistant",
-        content: "I couldn't reach the backend. Please ensure the FastAPI server is running.",
-      };
-      
       setSessions(prev => prev.map(s => s.id === activeSessionId ? {
         ...s,
-        messages: [...s.messages, errorMsg]
+        messages: [...s.messages, { role: "assistant", content: "Connection Error. Please check backend." }]
       } : s));
     } finally {
       setIsLoading(false);
@@ -238,53 +247,40 @@ export default function ChatPage() {
           <motion.div
             initial={{ opacity: 1 }}
             exit={{ opacity: 0, scale: 1.05 }}
-            transition={{ duration: 0.8, ease: "easeInOut" }}
+            transition={{ duration: 0.8 }}
             className="fixed inset-0 z-[9999] bg-[#05070a] flex flex-col items-center justify-center backdrop-blur-3xl"
           >
             <div className="relative">
               {/* Outer Glows */}
               <motion.div
-                animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.6, 0.3] }}
+                animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.5, 0.3] }}
                 transition={{ repeat: Infinity, duration: 4 }}
                 className="absolute -inset-10 bg-blue-500/20 blur-[60px] rounded-full"
               />
               
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 1 }}
-                className="relative flex flex-col items-center"
-              >
+              <motion.div className="relative flex flex-col items-center">
                 {/* Brand Logo / Icon */}
-                <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-blue-600 to-blue-400 p-[2px] shadow-[0_0_40px_rgba(59,130,246,0.3)] mb-8">
+                <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-600 to-blue-400 p-[2px] shadow-[0_0_40px_rgba(59,130,246,0.3)] mb-8">
                   <div className="w-full h-full rounded-[22px] bg-[#05070a] flex items-center justify-center">
-                    <Scale className="w-12 h-12 text-blue-400" />
+                    <Scale className="w-10 h-10 text-blue-400" />
                   </div>
                 </div>
 
-                <div className="text-center">
-                  <motion.h2 
-                    animate={{ opacity: [0.5, 1, 0.5] }}
-                    transition={{ repeat: Infinity, duration: 2 }}
-                    className="text-2xl font-bold tracking-tight mb-2 bg-gradient-to-r from-white via-blue-100 to-white bg-clip-text text-transparent"
-                  >
-                    Nyaya-Pro AI
-                  </motion.h2>
-                  <p className="text-blue-400/60 text-sm font-medium tracking-widest uppercase">
-                    Initializing Legal Workspace...
-                  </p>
+                <div className="text-center h-16">
+                  <motion.h2 className="text-2xl font-bold tracking-tight mb-2">Nyaya-Pro AI</motion.h2>
+                  <AnimatePresence mode="wait">
+                    <motion.p
+                      key={loadingMsgIdx}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="text-blue-400/80 text-sm font-medium tracking-wide"
+                    >
+                      {LOADING_MESSAGES[loadingMsgIdx]}
+                    </motion.p>
+                  </AnimatePresence>
                 </div>
               </motion.div>
-            </div>
-            
-            {/* Minimal Progress Bar */}
-            <div className="mt-12 w-48 h-[2px] bg-white/5 rounded-full overflow-hidden">
-              <motion.div
-                initial={{ x: "-100%" }}
-                animate={{ x: "100%" }}
-                transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-                className="w-full h-full bg-gradient-to-r from-transparent via-blue-500 to-transparent"
-              />
             </div>
           </motion.div>
         )}

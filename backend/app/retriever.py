@@ -38,13 +38,20 @@ class LegalRetriever:
     def condense_query(self, query: str, history: List[Any] = None) -> str:
         if not history or len(history) == 0:
             return query
+        
+        # If the query is very short or a greeting, don't condense
+        if len(query.split()) < 3:
+            return query
+
         chat_context = ""
         for msg in history[-3:]:
             chat_context += f"{msg.role.upper()}: {msg.content}\n"
+        
         prompt = (
-            f"Rewrite this follow-up as a complete standalone legal question by resolving any pronouns or references using the chat history.\n"
-            f"Do NOT add extra details or assume facts that are not explicitly in the follow-up.\n\n"
-            f"History:\n{chat_context}\nFollow-up: {query}\n\nOutput ONLY the rewritten question."
+            f"Given the chat history and a new follow-up question, determine if the follow-up is related to the history.\n"
+            f"If it is RELATED, rewrite it as a standalone legal question.\n"
+            f"If it is UNRELATED (a new topic or a greeting), return the follow-up exactly as is.\n\n"
+            f"History:\n{chat_context}\nFollow-up: {query}\n\nOutput ONLY the result."
         )
         try:
             resp = self.client.chat.completions.create(
@@ -55,7 +62,6 @@ class LegalRetriever:
             )
             return resp.choices[0].message.content.strip()
         except Exception as e:
-            print(f"⚠️  condense_query failed ({e}), using original.")
             return query
 
     def _deduplicate(self, matches: List[Any]) -> List[Dict]:
@@ -93,16 +99,44 @@ class LegalRetriever:
             print("👋 Greeting/Non-legal query detected. Bypassing retrieval.")
             return []
 
-        query_vector = self.embed_model.encode(rewritten).tolist()
+        # --- EXACT MATCH BOOSTING ---
+        # Detect patterns like "Article 75" or "Section 101"
+        import re
+        id_match = re.search(r'(?:article|section|art|sec)\.?\s*(\d+[a-z]?)', raw_query.lower())
+        exact_id = id_match.group(1).upper() if id_match else None
 
+        query_vector = self.embed_model.encode(rewritten).tolist()
+        
+        # Prepare filter
+        p_filter = {"source_code": {"$in": source_codes}}
+        
+        # 1. Semantic Search
         raw_results = self.index.query(
             vector=query_vector,
             top_k=top_k,
             include_metadata=True,
             namespace=settings.NAMESPACE,
-            filter={"source_code": {"$in": source_codes}}
+            filter=p_filter
         )
         matches = raw_results.get("matches", [])
+
+        # 2. Exact Match Check (If user specified a number)
+        if exact_id:
+            print(f"🎯 Detected request for Section/Article: {exact_id}. Performing keyword boost...")
+            exact_results = self.index.query(
+                vector=[0.0] * settings.EMBEDDING_DIM, # dummy vector for metadata-only search
+                top_k=5,
+                include_metadata=True,
+                namespace=settings.NAMESPACE,
+                filter={
+                    "source_code": {"$in": source_codes},
+                    "section_number": exact_id
+                }
+            )
+            exact_matches = exact_results.get("matches", [])
+            # Prioritize exact matches at the top
+            matches = exact_matches + [m for m in matches if m.get("id") not in [em.get("id") for em in exact_matches]]
+
         print(f"📊 Pinecone: {len(matches)} candidates from {source_codes}")
 
         if not matches:
@@ -113,7 +147,7 @@ class LegalRetriever:
             )
             matches = raw_results.get("matches", [])
 
-        # Return deduplicated top results directly
+        # Deduplicate and take top 8
         final = self._deduplicate(matches)[:8]
 
         print(f"✅ Returning {len(final)} results\n{'─'*50}\n")
